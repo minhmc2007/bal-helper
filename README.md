@@ -69,29 +69,18 @@ cd bal-helper
 ```bash
 flutter pub get
 ```
-
-### 3. Setup Assets
-Ensure you have your background video placed correctly:
-*   Place your video file at: `assets/video/bg_loop.mp4`
-*   Ensure `pubspec.yaml` contains:
-    ```yaml
-    flutter:
-      assets:
-        - assets/video/
-    ```
-
-### 4. Run in Debug Mode
+### 3. Run in Debug Mode
 ```bash
 flutter run -d linux
 ```
 
-### 5. Build for Release
+### 4. Build for Release
 To create the standalone executable for the distro:
 ```bash
 flutter build linux --release
 ```
 
-### 5.1 Build for Arch linux based distro
+### 4.1 Build for Arch linux based distro
 ```bash
 bash dist/binary_build.sh
 ```
