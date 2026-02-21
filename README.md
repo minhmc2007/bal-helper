@@ -61,7 +61,7 @@ sudo pacman -S  konsole mpv libmpv base-devel git && yay -S flutter
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/bal-helper.git
+git clone https://github.com/minhmc2007/bal-helper.git
 cd bal-helper
 ```
 
