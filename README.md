@@ -52,7 +52,7 @@ Since this app interacts deeply with the system, it requires the following envir
 Ensure these system packages are installed before running:
 
 ```bash
-sudo pacman -S  konsole mpv libmpv base-devel git && yay -S flutter
+sudo pacman -S  konsole mpv libmpv base-devel git && yay -S flutter-bin
 ```
 
 ---
