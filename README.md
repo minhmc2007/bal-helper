@@ -52,7 +52,7 @@ Since this app interacts deeply with the system, it requires the following envir
 Ensure these system packages are installed before running:
 
 ```bash
-sudo pacman -S  konsole mpv libmpv base-devel git && yay -S flutter
+sudo pacman -S  konsole mpv libmpv base-devel git && yay -S flutter-bin
 ```
 
 ---
@@ -61,7 +61,7 @@ sudo pacman -S  konsole mpv libmpv base-devel git && yay -S flutter
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/bal-helper.git
+git clone https://github.com/minhmc2007/bal-helper.git
 cd bal-helper
 ```
 
