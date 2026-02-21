@@ -1,0 +1,23 @@
+# Maintainer: minhmc2007 <quangminh21072010@gmail.com>
+pkgname=bal-helper-bin
+pkgver=1.0.2
+pkgrel=1
+pkgdesc="Blue Archive Linux Helper App (Binary)"
+arch=('x86_64')
+url="https://github.com/minhmc2007/bal-helper"
+license=('GPL3')
+depends=('gtk3' 'mpv' 'libappindicator-gtk3')
+provides=('bal-helper')
+conflicts=('bal-helper')
+options=('!strip')
+
+package() {
+    install -d "$pkgdir/opt/bal-helper"
+    install -d "$pkgdir/usr/bin"
+
+    cp -a "$srcdir/bundle/"* "$pkgdir/opt/bal-helper/"
+
+    chmod 755 "$pkgdir/opt/bal-helper/bal_helper"
+
+    ln -s "/opt/bal-helper/bal_helper" "$pkgdir/usr/bin/bal-helper"
+}

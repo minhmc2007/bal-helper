@@ -165,8 +165,7 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  // VM = Black (Artifact prevention)
-  // Real = Transparent
+  // Keep window base background black on VM to prevent transparency artifacts
   Color winBg = (globalGraphicsMode == GraphicsMode.vm) ? Colors.black : Colors.transparent;
 
   WindowOptions windowOptions = WindowOptions(
@@ -218,7 +217,7 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WindowListener {
   late final Player _player;
   late final VideoController _controller;
   int _currentViewIndex = 0;
@@ -226,18 +225,12 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    _player = Player(configuration: const PlayerConfiguration(logLevel: MPVLogLevel.error));
+    windowManager.addListener(this);
+    windowManager.setPreventClose(true); // Prevent default close so we can show dialog
 
-    // Check mode
-    final bool isVm = globalGraphicsMode == GraphicsMode.vm;
-
-    _controller = VideoController(
-      _player,
-      configuration: VideoControllerConfiguration(
-        // Force software decoding on VMs to fix Virtio crash
-        hwdec: isVm ? 'no' : 'auto',
-      ),
-    );
+    // Using the safe standard initialization that doesn't crash virtio
+    _player = Player();
+    _controller = VideoController(_player);
 
     final videoPath = getAssetPath('assets/video/bg_loop.mp4');
     _player.open(Media(videoPath));
@@ -247,8 +240,50 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    windowManager.removeListener(this);
     _player.dispose();
     super.dispose();
+  }
+
+  @override
+  void onWindowClose() {
+    _showExitDialog();
+  }
+
+  void _showExitDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: Row(
+          children: [
+            const Icon(Icons.info_outline, color: AppTheme.primaryBlue, size: 28),
+            const SizedBox(width: 10),
+            Text("Exit BAL Helper", style: GoogleFonts.rubik(fontWeight: FontWeight.bold, color: AppTheme.darkText, fontSize: 20)),
+          ],
+        ),
+        content: Text(
+          "Are you sure you want to close this window?\n\nIf you need to use this configuration tool again later, simply open your terminal and type:\n\n\$ bal-helper",
+          style: GoogleFonts.rubik(color: Colors.black87, fontSize: 15, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text("CANCEL", style: GoogleFonts.rubik(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          SenseiButton(
+            text: "EXIT",
+            isPrimary: true,
+            icon: Icons.exit_to_app,
+            onPressed: () {
+              Navigator.pop(context);
+              windowManager.destroy(); // Force exit window
+            },
+          )
+        ],
+      ),
+    );
   }
 
   void _navigateTo(int index) => setState(() => _currentViewIndex = index);
@@ -258,7 +293,7 @@ class _MainShellState extends State<MainShell> {
     Widget activeWidget;
     switch (_currentViewIndex) {
       case 0: activeWidget = WelcomeView(onNext: () => _navigateTo(1)); break;
-      case 1: activeWidget = DashboardView(onNavigate: _navigateTo, onExit: () => exit(0)); break;
+      case 1: activeWidget = DashboardView(onNavigate: _navigateTo); break;
       case 2: activeWidget = LogisticsView(onBack: () => _navigateTo(1)); break;
       case 3: activeWidget = VisualsView(onBack: () => _navigateTo(1)); break;
       case 4: activeWidget = MaintenanceView(onBack: () => _navigateTo(1)); break;
@@ -268,7 +303,7 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. Video Background
+          // 1. Video Background (safely handles VM & Hardware)
           SizedBox.expand(child: Video(controller: _controller, fit: BoxFit.cover, controls: NoVideoControls)),
 
           // 2. White Gradient Overlay
@@ -298,8 +333,12 @@ class _MainShellState extends State<MainShell> {
               duration: const Duration(milliseconds: 600),
               switchInCurve: Curves.easeOutExpo,
                 switchOutCurve: Curves.easeInExpo,
-                  transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: SlideTransition(position: Tween<Offset>(begin: const Offset(0.05, 0.0), end: Offset.zero).animate(anim), child: child)),
-                  child: KeyedSubtree(key: ValueKey<int>(_currentViewIndex), child: activeWidget),
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: SlideTransition(
+                      position: Tween<Offset>(begin: const Offset(0.05, 0.0), end: Offset.zero).animate(anim),
+                      child: child)),
+                      child: KeyedSubtree(key: ValueKey<int>(_currentViewIndex), child: activeWidget),
             ),
           ),
 
@@ -307,9 +346,9 @@ class _MainShellState extends State<MainShell> {
           const ConsoleOverlay(),
 
           // 6. Window Bar
-          const Positioned(
+          Positioned(
             top: 0, left: 0, right: 0, height: 40,
-            child: CustomTitleBar(),
+            child: CustomTitleBar(onClose: _showExitDialog),
           ),
         ],
       ),
@@ -321,7 +360,9 @@ class _MainShellState extends State<MainShell> {
 // CUSTOM TITLE BAR
 // ==========================================
 class CustomTitleBar extends StatelessWidget {
-  const CustomTitleBar({super.key});
+  final VoidCallback onClose;
+  const CustomTitleBar({super.key, required this.onClose});
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -329,16 +370,32 @@ class CustomTitleBar extends StatelessWidget {
         const Positioned.fill(
           child: DragToMoveArea(child: ColoredBox(color: Colors.transparent)),
         ),
+        // Positioned top right
         Positioned(
-          top: 0, bottom: 0, left: 16,
+          top: 0, bottom: 0, right: 0,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _TrafficLightButton(color: const Color(0xFFFF5F57), onTap: () => windowManager.close(), icon: Icons.close),
-              const SizedBox(width: 8),
-              _TrafficLightButton(color: const Color(0xFFFFBD2E), onTap: () => windowManager.minimize(), icon: Icons.remove),
-              const SizedBox(width: 8),
-              _TrafficLightButton(color: const Color(0xFF28C840), onTap: () async { if (await windowManager.isMaximized()) { windowManager.unmaximize(); } else { windowManager.maximize(); } }, icon: Icons.crop_square),
+              _WindowButton(
+                icon: Icons.remove,
+                onTap: () => windowManager.minimize(),
+              ),
+              _WindowButton(
+                icon: Icons.crop_square,
+                onTap: () async {
+                  if (await windowManager.isMaximized()) {
+                    windowManager.unmaximize();
+                  } else {
+                    windowManager.maximize();
+                  }
+                },
+              ),
+              _WindowButton(
+                icon: Icons.close,
+                hoverColor: Colors.red,
+                iconHoverColor: Colors.white,
+                onTap: onClose, // Triggers the unified exit dialog
+              ),
             ],
           ),
         ),
@@ -347,15 +404,28 @@ class CustomTitleBar extends StatelessWidget {
   }
 }
 
-class _TrafficLightButton extends StatefulWidget {
-  final Color color; final VoidCallback onTap; final IconData icon;
-  const _TrafficLightButton({required this.color, required this.onTap, required this.icon});
-  @override State<_TrafficLightButton> createState() => _TrafficLightButtonState();
+class _WindowButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? hoverColor;
+  final Color? iconHoverColor;
+
+  const _WindowButton({
+    required this.icon,
+    required this.onTap,
+    this.hoverColor,
+    this.iconHoverColor,
+  });
+
+  @override
+  State<_WindowButton> createState() => _WindowButtonState();
 }
 
-class _TrafficLightButtonState extends State<_TrafficLightButton> {
+class _WindowButtonState extends State<_WindowButton> {
   bool _isHovered = false;
-  @override Widget build(BuildContext context) {
+
+  @override
+  Widget build(BuildContext context) {
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
@@ -363,10 +433,16 @@ class _TrafficLightButtonState extends State<_TrafficLightButton> {
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
         child: Container(
-          width: 14, height: 14,
-          decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 1, offset: const Offset(0, 1))]),
+          width: 45, height: 40,
+          color: _isHovered ? (widget.hoverColor ?? Colors.black.withOpacity(0.1)) : Colors.transparent,
           alignment: Alignment.center,
-          child: _isHovered ? Icon(widget.icon, size: 9, color: Colors.black.withOpacity(0.6)) : null,
+          child: Icon(
+            widget.icon,
+            size: 18,
+            color: _isHovered && widget.iconHoverColor != null
+            ? widget.iconHoverColor
+            : AppTheme.darkText.withOpacity(0.8),
+          ),
         ),
       ),
     );
@@ -449,8 +525,7 @@ class ConsoleOverlay extends StatelessWidget {
 
 class DashboardView extends StatelessWidget {
   final Function(int) onNavigate;
-  final VoidCallback onExit;
-  const DashboardView({super.key, required this.onNavigate, required this.onExit});
+  const DashboardView({super.key, required this.onNavigate});
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -493,8 +568,10 @@ class LogisticsView extends StatelessWidget {
       children: [
         FadeInRight(delay: const Duration(milliseconds: 100), child: ActionRow(
           title: "AUR Helper (Yay-bin)",
-          command: "cd \$HOME && sudo pacman -S --needed --noconfirm git base-devel && git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si --noconfirm",
-          description: "Installs yay-bin (Faster compilation).", btnColor: AppTheme.primaryBlue,
+          command: "pacman -S --noconfirm yay-bin",
+          description: "Installs yay-bin directly from mirror.",
+          btnColor: AppTheme.primaryBlue,
+          requiresRoot: true,
         )),
         FadeInRight(delay: const Duration(milliseconds: 200), child: ActionRow(
           title: "Graphic Drivers (Nvidia)", command: "pacman -S --noconfirm nvidia nvidia-utils nvidia-settings",
